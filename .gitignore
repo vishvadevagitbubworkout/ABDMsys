@@ -1,0 +1,10 @@
+backend/requests.sqlite3
+__pycache__/
+*.py[cod]
+
+# Synthetic/generated data and data-generation artifacts
+dataset/
+dataset_backup*/
+data_generator/
+tests/
+reports/

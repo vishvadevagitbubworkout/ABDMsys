@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Patient Record Retrieval</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font: 16px/1.5 system-ui, sans-serif;
+        color: #17212b;
+        background: #f3f6f8;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 32px 16px; }
+      main { max-width: 1200px; margin: 0 auto; }
+      .panel {
+        background: white;
+        border: 1px solid #dce3e8;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        padding: 24px;
+      }
+      h1 { font-size: 1.6rem; margin: 0 0 6px; }
+      h2 { font-size: 1.2rem; margin: 0 0 16px; }
+      p { color: #52616d; margin: 0 0 20px; }
+      label { display: block; font-weight: 600; margin-bottom: 6px; }
+      form { max-width: 440px; }
+      input, button {
+        box-sizing: border-box;
+        font: inherit;
+        padding: 10px 12px;
+        width: 100%;
+      }
+      input { border: 1px solid #aebbc5; border-radius: 6px; margin-bottom: 14px; }
+      button {
+        background: #126b57;
+        border: 0;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:disabled { cursor: wait; opacity: 0.65; }
+      #message { margin: 14px 0 0; overflow-wrap: anywhere; }
+      #message.error { color: #a32929; }
+      [hidden] { display: none !important; }
+      .info-grid, .summary-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+      .info-item, .summary-item {
+        background: #f3f6f8;
+        border-radius: 8px;
+        padding: 12px 14px;
+        overflow-wrap: anywhere;
+      }
+      .info-item span, .summary-item span {
+        color: #52616d;
+        display: block;
+        font-size: 0.9rem;
+      }
+      .info-item strong, .summary-item strong { display: block; }
+      .hospital { border-top: 1px solid #dce3e8; padding-top: 14px; }
+      .hospital + .hospital { margin-top: 16px; }
+      details > summary {
+        cursor: pointer;
+        font-weight: 650;
+        padding: 6px 0;
+      }
+      .category { margin: 8px 0 12px 14px; }
+      .category-count { color: #52616d; font-weight: 400; }
+      .empty-category { color: #52616d; margin: 8px 0; }
+      .table-wrap { max-height: 65vh; overflow: auto; }
+      table { border-collapse: collapse; min-width: 820px; width: 100%; }
+      th, td {
+        border-bottom: 1px solid #dce3e8;
+        padding: 9px 11px;
+        text-align: left;
+        vertical-align: top;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+      }
+      th { background: #f3f6f8; position: sticky; top: 0; }
+      @media (max-width: 600px) {
+        body { padding: 18px 10px; }
+        .panel { padding: 18px; }
+        .category { margin-left: 4px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel" aria-labelledby="page-title">
+        <h1 id="page-title">Patient record retrieval</h1>
+        <p>Enter a patient ID to retrieve synthetic records from all hospitals.</p>
+        <form id="request-form">
+          <label for="patient-id">Patient ID</label>
+          <input id="patient-id" name="patient_id" placeholder="SYN-0001" required
+                 pattern="SYN-[0-9]{4}" autocomplete="off">
+          <button id="submit-button" type="submit">Retrieve records</button>
+        </form>
+        <p id="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="patient-info" class="panel" aria-labelledby="patient-info-title" hidden>
+        <h2 id="patient-info-title">Patient overview</h2>
+        <div class="info-grid">
+          <div class="info-item"><span>Patient ID</span><strong id="patient-value"></strong></div>
+          <div class="info-item"><span>Request ID</span><strong id="request-value"></strong></div>
+          <div class="info-item"><span>Retrieval status</span><strong id="status-value"></strong></div>
+          <div class="info-item"><span>Synthetic data</span><strong id="synthetic-value"></strong></div>
+          <div class="info-item"><span>Hospitals searched</span><strong id="searched-value"></strong></div>
+          <div class="info-item"><span>Hospitals with records</span><strong id="hospital-count-value"></strong></div>
+        </div>
+      </section>
+
+      <section id="retrieval-summary" class="panel" aria-labelledby="summary-title" hidden>
+        <h2 id="summary-title">Retrieval statistics</h2>
+        <div id="summary-grid" class="summary-grid"></div>
+      </section>
+
+      <section id="hospitals-panel" class="panel" aria-labelledby="hospitals-title" hidden>
+        <h2 id="hospitals-title">Hospital records</h2>
+        <div id="hospital-results"></div>
+      </section>
+    </main>
+    <script>
+      const form = document.querySelector("#request-form");
+      const button = document.querySelector("#submit-button");
+      const message = document.querySelector("#message");
+      const patientInfo = document.querySelector("#patient-info");
+      const summaryPanel = document.querySelector("#retrieval-summary");
+      const hospitalsPanel = document.querySelector("#hospitals-panel");
+      const summaryGrid = document.querySelector("#summary-grid");
+      const hospitalResults = document.querySelector("#hospital-results");
+      const categoryLabels = {
+        visits: "Visits",
+        diagnoses: "Diagnoses",
+        medications: "Medications",
+        lab_results: "Laboratory results",
+        procedures: "Procedures",
+        clinical_notes: "Clinical notes",
+        allergies: "Allergies",
+        vital_signs: "Vital signs"
+      };
+      const hospitalNames = ["Hospital_A", "Hospital_B", "Hospital_C"];
+      const categoryNames = Object.keys(categoryLabels);
+
+      function setText(id, value) {
+        document.querySelector(`#${id}`).textContent =
+          value === null || value === undefined || value === "" ? "—" : String(value);
+      }
+
+      function showRequestInfo(data) {
+        setText("patient-value", data.patient_id);
+        setText("request-value", data.request_id);
+        setText("status-value", data.status);
+        setText("synthetic-value", data.synthetic === true ? "Yes" : "No");
+        setText("searched-value", data.hospitals_searched);
+        setText("hospital-count-value", data.hospital_count);
+        patientInfo.hidden = false;
+      }
+
+      function appendTable(container, records) {
+        if (records.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "empty-category";
+          empty.textContent = "No records in this category.";
+          container.appendChild(empty);
+          return;
+        }
+
+        const fields = Object.keys(records[0]);
+        const wrapper = document.createElement("div");
+        wrapper.className = "table-wrap";
+        const table = document.createElement("table");
+        const head = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        for (const field of fields) {
+          const heading = document.createElement("th");
+          heading.scope = "col";
+          heading.textContent = field;
+          headerRow.appendChild(heading);
+        }
+        head.appendChild(headerRow);
+        table.appendChild(head);
+
+        const body = document.createElement("tbody");
+        for (const record of records) {
+          const row = document.createElement("tr");
+          for (const field of fields) {
+            const cell = document.createElement("td");
+            const value = record[field];
+            cell.textContent =
+              value === null || value === undefined || value === ""
+                ? "—"
+                : String(value);
+            row.appendChild(cell);
+          }
+          body.appendChild(row);
+        }
+        table.appendChild(body);
+        wrapper.appendChild(table);
+        container.appendChild(wrapper);
+      }
+
+      function showResults(data) {
+        showRequestInfo(data);
+        summaryGrid.replaceChildren();
+        for (const category of categoryNames) {
+          const item = document.createElement("div");
+          item.className = "summary-item";
+          const label = document.createElement("span");
+          label.textContent = `Total ${categoryLabels[category].toLowerCase()}`;
+          const count = document.createElement("strong");
+          count.textContent = String(data.record_summary[category] ?? 0);
+          item.append(label, count);
+          summaryGrid.appendChild(item);
+        }
+        summaryPanel.hidden = false;
+
+        hospitalResults.replaceChildren();
+        for (const hospital of hospitalNames) {
+          const hospitalDetails = document.createElement("details");
+          hospitalDetails.className = "hospital";
+          const hospitalSummary = document.createElement("summary");
+          const hospitalTotal = Object.values(
+            data.hospital_summary[hospital] || {}
+          ).reduce((total, count) => total + count, 0);
+          hospitalSummary.textContent = `${hospital} (${hospitalTotal} records)`;
+          hospitalDetails.appendChild(hospitalSummary);
+
+          for (const category of categoryNames) {
+            const records = data.hospitals[hospital][category] || [];
+            const categoryDetails = document.createElement("details");
+            categoryDetails.className = "category";
+            const categorySummary = document.createElement("summary");
+            categorySummary.textContent = `${categoryLabels[category]} `;
+            const count = document.createElement("span");
+            count.className = "category-count";
+            count.textContent = `(${records.length})`;
+            categorySummary.appendChild(count);
+            categoryDetails.appendChild(categorySummary);
+            appendTable(categoryDetails, records);
+            hospitalDetails.appendChild(categoryDetails);
+          }
+          hospitalResults.appendChild(hospitalDetails);
+        }
+        hospitalsPanel.hidden = false;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        message.textContent = "Searching all hospital record categories…";
+        message.classList.remove("error");
+        button.disabled = true;
+        patientInfo.hidden = true;
+        summaryPanel.hidden = true;
+        hospitalsPanel.hidden = true;
+
+        try {
+          const response = await fetch("/api/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              patient_id: form.elements.patient_id.value
+            })
+          });
+          const data = await response.json();
+          if (data.request_id) {
+            showRequestInfo(data);
+          }
+          if (!response.ok) {
+            throw new Error(data.error || "Could not retrieve patient records");
+          }
+
+          showResults(data);
+          const total = Object.values(data.record_summary)
+            .reduce((sum, count) => sum + count, 0);
+          message.textContent = `Retrieved ${total} record(s) across all categories.`;
+          form.reset();
+        } catch (error) {
+          message.textContent = error.message || "Could not reach the server.";
+          message.classList.add("error");
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
