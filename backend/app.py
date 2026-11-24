@@ -15,6 +15,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.patient_retrieval_agent import retrieve_patient_records_for_agent
+from services.clinical_summarizer import (
+    MODEL as SUMMARY_MODEL,
+    ClinicalSummaryError,
+    summarize_patient_records,
+)
 from services.patient_record_service import PatientRecordRetrievalError
 
 
@@ -129,7 +134,10 @@ def get_agent_request(request_id, database_file):
         "created_at": row[3],
     }
     if row[4] is not None:
-        request.update(json.loads(row[4]))
+        saved_result = json.loads(row[4])
+        for field in ("records", "hospitals", "patient"):
+            saved_result.pop(field, None)
+        request.update(saved_result)
     if row[5] is not None:
         request["error"] = row[5]
     return request
@@ -226,13 +234,50 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        try:
+            timeline = summarize_patient_records(
+                request["patient_id"], result, SUMMARY_MODEL
+            )
+        except ClinicalSummaryError as error:
+            update_agent_request(
+                request["request_id"],
+                "failed",
+                self.database_file,
+                error=str(error),
+            )
+            self._send_json(
+                503,
+                {
+                    **request,
+                    "status": "failed",
+                    "error": str(error),
+                },
+            )
+            return
+
+        public_result = {
+            key: value
+            for key, value in result.items()
+            if key not in {"patient", "hospitals", "records"}
+        }
+        public_result["timeline"] = timeline
+        public_result["summary_model"] = SUMMARY_MODEL
+        public_result["summary_notice"] = (
+            "The local model selects facts; the app renders exact cited "
+            "source values. The same model performs a second check. "
+            "Not clinical advice."
+            if timeline
+            else "No records were available to summarize."
+        )
         update_agent_request(
             request["request_id"],
             "completed",
             self.database_file,
-            result=result,
+            result=public_result,
         )
-        self._send_json(201, {**request, **result, "status": "completed"})
+        self._send_json(
+            201, {**request, **public_result, "status": "completed"}
+        )
 
     def log_message(self, format_string, *args):
         return
