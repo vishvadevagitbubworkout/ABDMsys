@@ -213,6 +213,29 @@
           if (!response.ok) {
             throw new Error(data.error || "Could not retrieve patient records");
           }
+          if (
+            !Array.isArray(data.timeline) ||
+            !data.record_summary ||
+            typeof data.record_summary !== "object" ||
+            Array.isArray(data.record_summary) ||
+            data.timeline.some((item) =>
+              !item ||
+              typeof item.date !== "string" ||
+              typeof item.title !== "string" ||
+              typeof item.summary !== "string" ||
+              !Array.isArray(item.sources) ||
+              item.sources.some((source) =>
+                !source ||
+                typeof source.id !== "string" ||
+                typeof source.category !== "string" ||
+                typeof source.hospital !== "string"
+              )
+            )
+          ) {
+            throw new Error(
+              "The API response is missing the summary. Restart the backend using the latest project code, then try again."
+            );
+          }
 
           showResults(data);
           const total = Object.values(data.record_summary)
