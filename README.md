@@ -30,14 +30,13 @@ Each hospital must provide the same record-category directories defined by
 
 ## Local chronological summaries
 
-The UI retrieves the patient's records, asks the local Ollama model to create
-a dated timeline by selecting relevant source fields, then asks it to check
-those fields against their cited records. The application verifies each
-selected field exists in the source and renders its stored value directly,
-rather than displaying model-written clinical claims. It also rejects invalid
-citations and events grouped across different dates. Only the summary, source
-IDs, and record counts are returned or newly saved; raw records are not
-displayed in the UI or included in new API responses.
+The UI retrieves the patient's records and makes one local Ollama call to
+select and check relevant source fields for a dated timeline. The application
+verifies each selected field exists in the cited source and renders its stored
+value directly, rather than displaying model-written clinical claims. It
+rejects invalid citations and groups records by their actual dates. Only the
+summary, source IDs, and record counts are returned or newly saved; raw records
+are not displayed in the UI or included in new API responses.
 
 The default model is `rafw007/qwen35-claude-coder:4b`. If needed, install it
 with Ollama and start the local Ollama service:
@@ -47,6 +46,8 @@ ollama pull rafw007/qwen35-claude-coder:4b
 ```
 
 The first request can take several minutes while Ollama loads the model.
+After a summary, Ollama keeps the model loaded for 10 minutes to speed up
+subsequent requests; it uses local GPU/CPU memory during that time.
 
 To select another model already installed in Ollama:
 

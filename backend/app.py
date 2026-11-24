@@ -263,9 +263,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         public_result["timeline"] = timeline
         public_result["summary_model"] = SUMMARY_MODEL
         public_result["summary_notice"] = (
-            "The local model selects facts; the app renders exact cited "
-            "source values. The same model performs a second check. "
-            "Not clinical advice."
+            "The local model selects and checks source facts; the app verifies "
+            "and renders exact recorded values. Not clinical advice."
             if timeline
             else "No records were available to summarize."
         )
